@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Juego Phaser</title>
+        <link rel="icon" href="assets/sprites/mario.png">
+        <link rel="stylesheet" type="text/css" href="css/dialog-box.css">
+        <script src="phaser-latest/phaser.min.js"></script>
+        <script src="bower_components/jquery/dist/jquery.min.js"></script>
+    </head>
+    <body>
+        <div id="phaser-canvas" class="game"></div>
+        <div class="dialog-box">
+            <span id="console" class="noselect">...</span>
+        </div>
+    </body>
+    <script type="text/javascript">
+        var game = new Phaser.Game(600, 320, Phaser.AUTO, "phaser-canvas");
+
+        var Character = function (game, x, y, spriteKey, scale) {
+
+            Phaser.Sprite.call(this, game, x, y, spriteKey);
+
+            // this.texture.baseTexture.scaleMode = PIXI.scaleModes.NEAREST;
+
+            this.anchor.set(0.5);
+
+            this.scale.set(scale);
+
+            this.characterName = spriteKey;
+        };
+
+        Character.prototype = Object.create(Phaser.Sprite.prototype);
+        Character.prototype.constructor = Character;
+
+        Character.prototype.update = function(){
+            // AI Loop  goes here, for instance a behavior function like walking in circles
+            // console.log("calling update on character:", this.characterName);
+        };
+
+        var PhaserState = function () {
+            this.player = null;
+            this.cursors = null;
+            this.npcs = null;
+        };
+
+        PhaserState.prototype = {
+
+            init: function () {
+
+                this.game.renderer.renderSession.roundPixels = true;
+                this.physics.startSystem(Phaser.Physics.ARCADE);
+            },
+
+            preload: function () {
+                this.load.spritesheet("dude", "assets/sprites/dude.png", 32, 48);
+                this.load.image("mario", "assets/sprites/mario.png");
+                this.load.spritesheet("pokemon", "assets/sprites/pokemon-npcs.png", 31.9, 32);
+                this.load.image("tiles", "assets/sprites/office_ud_transparent.png");
+                this.load.tilemap("scene", "assets/maps/oficina.json", null, Phaser.Tilemap.TILED_JSON);
+
+                this.load.bitmapFont("shmupfont", "assets/fonts/shmupfont.png", "assets/fonts/shmupfont.xml");
+            },
+
+            create: function () {
+
+                this.map = this.add.tilemap("scene");
+                this.map.addTilesetImage("office", "tiles");
+
+                this.map.setCollisionBetween(232, 239);
+                this.map.setCollisionBetween(241, 254);
+                this.map.setCollisionBetween(256, 320);
+                this.map.setCollisionBetween(8, 191);
+
+
+                this.layer0 = this.map.createLayer("layer0");
+                this.layer = this.map.createLayer("layer1");
+                this.layer2 = this.map.createLayer("layer2");
+                this.layer3 = this.map.createLayer("layer3");
+
+                this.layer0.fixedToCamera = true;
+                this.layer.fixedToCamera = true;
+                this.layer2.fixedToCamera = true;
+                this.layer3.fixedToCamera = true;
+
+                // this.map.currentLayer = this.layer;
+
+
+                // this.layer.debug = true;
+                // this.layer.resizeWorld();
+
+                this.player = new Character(this.game, 50,570, "pokemon", 1.4);
+
+
+                // this.physics.arcade.gravity.y = 250;
+                this.physics.enable(this.player);
+
+                this.player.body.collideWorldBounds = true;
+                this.player.body.setSize(this.player.width*0.3, this.player.height*0.7);
+
+                this.player.inputEnabled = true;
+                this.player.events.onInputDown.add(this.listener, this);
+
+                var basicAnimations = {
+                    "walkingLeft": [66, 33, 99],
+                    "walkingRight": [1,34,67],
+                    "walkingDown": [35,68,101],
+                    "walkingUp": [0,100,2]
+                };
+
+
+                var offset = 25;
+
+                for(key in basicAnimations){
+                    var offsetRemainder = offset % 11;
+                    var step = 4*33*Math.floor(offset/11);
+
+                    for(var i = 0; i < basicAnimations[key].length; i++){
+                        basicAnimations[key][i] += (offsetRemainder*3 + step); 
+                    }
+                    this.player.animations.add(key, basicAnimations[key], 10, true);
+                }
+
+                
+
+                this.player.frame = basicAnimations["walkingDown"][0];
+
+                // this.dude = new Character(this.game, 130, 200, "dude", 1.2);
+
+                this.add.existing(this.player);
+
+                // console.log(this.layer3);
+                // console.log(this.player);
+                this.layer3.bringToTop();
+
+                //follow player
+                this.game.world.setBounds(0, 0, 1920, 640);
+                this.game.camera.follow(this.player);
+                // this.game.camera.deadzone = new Phaser.Rectangle(100, 100, 600, 400);
+                this.cursors = this.input.keyboard.createCursorKeys();
+
+                this.actionKeys = this.input.keyboard.addKeys({
+                    "examine": Phaser.Keyboard.S,
+                    "cancel": Phaser.Keyboard.A
+                });
+
+                this.actionKeys["examine"].onDown.add(this.examineButton, this);
+
+                this.boss = this.add.sprite(870, 67, "pokemon");
+                this.boss.frame = 578;
+                this.boss.scale.set(1.4, 1.4);
+
+                this.npcs = this.add.group();
+                this.npcs.add(this.boss);
+
+                console.log(this.npcs);
+
+                // for(var i = 0; i < this.npcs.length; i++){
+                //     this.npcs.children[i].frame = 1;
+                // }
+
+                // console.log("actionKeys", this.actionKeys);
+            },
+
+            update: function () {
+                this.physics.arcade.collide(this.player, this.layer);
+                this.player.body.velocity.x = 0;
+                this.player.body.velocity.y = 0;
+
+                if(this.cursors.up.isDown){
+                    this.player.body.velocity.y = -250;
+                    this.player.animations.play("walkingUp");
+                }
+                else if(this.cursors.down.isDown){
+                    this.player.body.velocity.y = 250;
+                    this.player.animations.play("walkingDown");
+                }
+                else if(this.cursors.left.isDown){
+                    this.player.body.velocity.x = -250;
+                    this.player.animations.play("walkingLeft");
+                }
+                else if(this.cursors.right.isDown){
+                    this.player.body.velocity.x = 250;
+                    this.player.animations.play("walkingRight");
+                }
+                else {
+                    this.player.animations.stop();
+                    // this.player.frame = 1;
+                }
+            },
+            render: function(){
+                // console.log(this.player.body.position.x, this.player.body.position.y);
+                // this.game.debug.body(this.player, "#888888", true);
+            },
+
+            listener: function(){
+                console.log("I'm not Mario");
+            },
+
+            examineButton: function(){
+                var message = "...";
+                if(this.player.body.position.x < 1092 && this.player.body.position.x >= 800){
+                    if(this.player.body.position.y < 580 && this.player.body.position.y >= 510){
+                        message = "Es el espacio de trabajo de la secretaria...";
+                    }
+                    else if(this.player.body.position.y < 290){
+                        message = "La oficina de los jefes...";
+                    }
+                }
+                else if(this.player.body.position.x < 710 && this.player.body.position.x >= 190){
+                    if(this.player.body.position.y < 290){
+                        message = "La oficina de desarrollo de software...";
+                    }
+                    else if(this.player.body.position.y >= 350){
+                        message = "Esta es el área de los comerciales...";
+                    }
+                }
+                else if(this.player.body.position.x > 1100){
+                    if(this.player.body.position.y < 280){
+                        message = "Aquí van los nuevos...";
+                    }
+                }
+                else if(this.player.body.position.x < 130){
+                    if(this.player.body.position.y < 450 && this.player.body.position.y > 190){
+                        message = "Los baños...";
+                    }
+                    else if(this.player.body.position.y < 190){
+                        message = "La cocina...";
+                    }
+                }
+
+                $("#console").text(message);
+                $(".dialog-box").css({
+                    "display": "block"
+                });
+
+                setTimeout(function(){
+                    $(".dialog-box").css({
+                        "display": "none"
+                    });
+                }, 2000);
+            }
+
+        };
+
+        game.state.add("Game", PhaserState, true);
+    </script>
+</html>

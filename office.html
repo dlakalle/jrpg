@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Office Game</title>
+        <link rel="icon" href="assets/sprites/mario.png">
+        <link rel="stylesheet" type="text/css" href="css/dialog-box.css">
+        <script src="phaser-latest/phaser.min.js"></script>
+        <script src="bower_components/jquery/dist/jquery.min.js"></script>
+    </head>
+    <body>
+        <div id="phaser-canvas" class="game"></div>
+        <div class="dialog-box">
+            <span id="console" class="noselect">...</span>
+        </div>
+    </body>
+    <script type="text/javascript">
+        var game = new Phaser.Game(600, 320, Phaser.AUTO, "phaser-canvas");
+
+        var nonPlayableCharacters = [
+            {
+                x: 100,
+                y: 200,
+                index: 28,
+                velocity: 200,
+                name: "Jefe"
+            },
+            {
+                x: 400,
+                y: 300,
+                index: 18,
+                velocity: 250,
+                name: "Secretaria"
+            }
+        ];
+
+        var Character = function (game, x, y, spriteKey, scale) {
+
+            Phaser.Sprite.call(this, game, x, y, spriteKey);
+
+            // this.texture.baseTexture.scaleMode = PIXI.scaleModes.NEAREST;
+            this.anchor.set(0.5);
+            this.scale.set(scale);
+            this.characterName = spriteKey;
+        };
+
+        Character.prototype = Object.create(Phaser.Sprite.prototype);
+        Character.prototype.constructor = Character;
+
+        Character.prototype.initAnimations = function(characterOffset){
+            var offset = characterOffset;
+
+            var basicAnimations = {
+                "walkingLeft": [66, 33, 99],
+                "walkingRight": [1,34,67],
+                "walkingDown": [35,68,101],
+                "walkingUp": [0,100,2]
+            };
+
+            for(key in basicAnimations){
+                var offsetRemainder = offset % 11;
+                var step = 4*33*Math.floor(offset/11);
+
+                for(var i = 0; i < basicAnimations[key].length; i++){
+                    basicAnimations[key][i] += (offsetRemainder*3 + step); 
+                }
+                this.animations.add(key, basicAnimations[key], 10, true);
+            }
+
+            this.frame = basicAnimations["walkingDown"][0];
+            this.facing = "down";
+        };
+
+        Character.prototype.walk = function(args){
+            var direction = args.direction;
+            var velocity = args.velocity;
+
+            if(velocity === undefined){
+                velocity = 250;
+            }
+
+            switch(direction){
+                case "up":
+                    this.body.velocity.y = -(velocity);
+                    this.animations.play("walkingUp");
+                    this.facing = "up";
+                    break;
+                case "down":
+                    this.body.velocity.y = velocity;
+                    this.animations.play("walkingDown");
+                    this.facing = "down";
+                    break;
+                case "left":
+                    this.body.velocity.x = -(velocity);
+                    this.animations.play("walkingLeft");
+                    this.facing = "left";
+                    break;
+                case "right":
+                    this.body.velocity.x = velocity;
+                    this.animations.play("walkingRight");
+                    this.facing = "right";
+                    break;
+                case "stop":
+                default:
+                    this.body.velocity.x = 0;
+                    this.body.velocity.y = 0;
+                    this.animations.stop();
+                    this.facing = "down";
+            }
+        };
+
+        Character.prototype.initPhysicalBody = function(physics){
+            physics.enable(this);
+            this.body.collideWorldBounds = true;
+        };
+
+        Character.prototype.update = function(){
+            // AI Loop  goes here, for instance a behavior function like walking in circles
+            // console.log("calling update on character:", this.characterName);
+        };
+
+        var PhaserState = function () {
+            this.player = null;
+            this.cursors = null;
+            this.npcs = null;
+        };
+
+        PhaserState.prototype = {
+
+            init: function () {
+
+                this.game.renderer.renderSession.roundPixels = true;
+                this.physics.startSystem(Phaser.Physics.ARCADE);
+            },
+
+            preload: function () {
+                this.load.spritesheet("dude", "assets/sprites/dude.png", 32, 48);
+                this.load.image("mario", "assets/sprites/mario.png");
+                this.load.spritesheet("pokemon", "assets/sprites/pokemon-npcs.png", 31.9, 32);
+                this.load.image("tiles", "assets/sprites/office_ud_transparent.png");
+                this.load.tilemap("scene", "assets/maps/oficina.json", null, Phaser.Tilemap.TILED_JSON);
+
+                this.load.bitmapFont("shmupfont", "assets/fonts/shmupfont.png", "assets/fonts/shmupfont.xml");
+            },
+
+            create: function () {
+
+                this.map = this.add.tilemap("scene");
+                this.map.addTilesetImage("office", "tiles");
+
+                this.map.setCollisionBetween(232, 239);
+                this.map.setCollisionBetween(241, 254);
+                this.map.setCollisionBetween(256, 320);
+                this.map.setCollisionBetween(8, 191);
+
+
+                this.layer0 = this.map.createLayer("layer0");
+                this.layer = this.map.createLayer("layer1");
+                this.layer2 = this.map.createLayer("layer2");
+                this.layer3 = this.map.createLayer("layer3");
+
+                this.layer0.fixedToCamera = true;
+                this.layer.fixedToCamera = true;
+                this.layer2.fixedToCamera = true;
+                this.layer3.fixedToCamera = true;
+
+                // this.map.currentLayer = this.layer;
+
+
+                // this.layer.debug = true;
+                // this.layer.resizeWorld();
+
+                this.player = new Character(this.game, 50,570, "pokemon", 1.4);
+                // this.physics.arcade.gravity.y = 250;
+
+                this.player.initPhysicalBody(this.physics);
+                
+                this.player.body.setSize(this.player.width*0.3, this.player.height*0.7);
+
+                this.player.inputEnabled = true;
+                this.player.events.onInputDown.add(this.listener, this);
+
+                this.player.initAnimations(25);
+                //line of sight of the player
+                this.player.addChild(this.game.make.sprite(0, 20));
+                this.player.getChildAt(0).anchor.set(0.5);
+                this.physics.enable(this.player.getChildAt(0));
+                this.player.getChildAt(0).body.setSize(30,30);
+
+                this.add.existing(this.player);
+
+                this.player.direction = "down";
+                this.player.directionChange = new Phaser.Signal();
+                this.player.directionChange.add(this.playerChangeDirection, this);
+
+                // console.log(this.layer3);
+                // console.log(this.player);
+                this.layer3.bringToTop();
+
+                //follow player
+                this.game.world.setBounds(0, 0, 1920, 640);
+                this.game.camera.follow(this.player);
+                // this.game.camera.deadzone = new Phaser.Rectangle(100, 100, 600, 400);
+                this.cursors = this.input.keyboard.createCursorKeys();
+
+                this.actionKeys = this.input.keyboard.addKeys({
+                    "examine": Phaser.Keyboard.S,
+                    "cancel": Phaser.Keyboard.A
+                });
+
+                this.actionKeys["examine"].onDown.add(this.examineButton, this);
+
+                //all npcs will be kept inside this group
+                this.npcs = this.add.group();
+
+                var behaviorGenerator = function(direction, velocity){
+                    var directions = ["up", "down", "left", "right"];
+                    if(velocity === undefined){
+                        velocity = 250;
+                    }
+                    return function(){
+                        this.walk({
+                            direction: directions[direction],
+                            velocity: velocity
+                        });
+                    };
+                };
+
+                var nonPlayableCharacter; 
+                for(var i = nonPlayableCharacters.length - 1; i >= 0 ; i--){
+                    //add some random variables for the coordinates
+                    // var coorX = Math.floor((Math.random() * 1920) + 1);
+                    // var coorY = Math.floor((Math.random() * 640) + 1);
+                    nonPlayableCharacter = nonPlayableCharacters[i];
+                    var npc = new Character(this.game, nonPlayableCharacter.x, nonPlayableCharacter.y, "pokemon", 1.4);
+                    npc.initPhysicalBody(this.physics);
+                    npc.body.setSize(npc.width*0.3, npc.height*0.7);
+                    npc.body.immovable = true;
+                    npc.initAnimations(nonPlayableCharacter.index);
+                    npc.name = nonPlayableCharacter.name;
+
+                    this.npcs.add(npc);
+
+                    // npc.behavior = behaviorGenerator(Math.floor((Math.random() * 4)));
+                }
+            },
+
+            update: function () {
+                var direction;
+                this.physics.arcade.collide(this.player, this.layer);
+                this.physics.arcade.collide(this.player, this.npcs);
+                this.physics.arcade.collide(this.npcs, this.layer, function(npc, layer){
+                    npc.body.velocity.x = 0;
+                    npc.body.velocity.y = 0;
+                }, null, this);
+
+                // console.log(this.player.body.touching);
+
+                this.player.body.velocity.x = 0;
+                this.player.body.velocity.y = 0;
+
+                if(this.cursors.up.isDown){
+                    direction = "up";
+                }
+                else if(this.cursors.down.isDown){
+                    direction = "down";
+                }
+                else if(this.cursors.left.isDown){
+                    direction = "left";
+                }
+                else if(this.cursors.right.isDown){
+                    direction = "right";
+                }
+                else {
+                    direction = "stop";
+                }
+
+                if(this.player.direction !== direction){
+                    this.player.directionChange.dispatch(direction);
+                }
+                this.player.walk({
+                    direction: this.player.direction,
+                    velocity: 250
+                });
+
+                // this.npcs.forEachExists(function(npc){
+                //     npc.behavior();
+                // });
+            },
+            render: function(){
+                // console.log(this.player.body.position.x, this.player.body.position.y);
+                // this.game.debug.body(this.player, "#888888", true);
+                // this.game.debug.body(this.player.getChildAt(0), "#888888", true);
+                // this.npcs.forEachExists(function(npc){
+                //     this.game.debug.body(npc, "#888888", true);
+                // }, this);
+            },
+
+            listener: function(){
+                console.log("I'm not Mario");
+            },
+
+            playerChangeDirection: function(direction){
+                switch(direction){
+                    case "up":
+                        this.player.getChildAt(0).x = 0;
+                        this.player.getChildAt(0).y = -20;
+                        break;
+                    case "left":
+                        this.player.getChildAt(0).x = -20;
+                        this.player.getChildAt(0).y = 0;
+                        break;
+                    case "right":
+                        this.player.getChildAt(0).x = 20;
+                        this.player.getChildAt(0).y = 0;
+                        break;
+                    case "down":
+                        this.player.getChildAt(0).x = 0;
+                        this.player.getChildAt(0).y = 20;
+                        break;
+                }
+                this.player.direction = direction;
+            },
+
+            examineButton: function(){
+                var message = "...";
+                this.player.interactWith = null;
+
+                this.physics.arcade.overlap(this.player.getChildAt(0), this.npcs, null, function(player, npc){
+                    this.player.interactWith = npc;
+                }, this);
+
+                if(this.player.interactWith !== null && this.player.interactWith !== undefined){
+                    message = "Hola " + this.player.interactWith.name;
+                }
+                else{
+                    if(this.player.body.position.x < 1092 && this.player.body.position.x >= 800){
+                        if(this.player.body.position.y < 580 && this.player.body.position.y >= 510){
+                            message = "Es el espacio de trabajo de la secretaria...";
+                        }
+                        else if(this.player.body.position.y < 290){
+                            message = "La oficina de los jefes...";
+                        }
+                    }
+                    else if(this.player.body.position.x < 710 && this.player.body.position.x >= 190){
+                        if(this.player.body.position.y < 290){
+                            message = "La oficina de desarrollo de software...";
+                        }
+                        else if(this.player.body.position.y >= 350){
+                            message = "Esta es el área de los comerciales...";
+                        }
+                    }
+                    else if(this.player.body.position.x > 1100){
+                        if(this.player.body.position.y < 280){
+                            message = "Aquí van los nuevos...";
+                        }
+                    }
+                    else if(this.player.body.position.x < 130){
+                        if(this.player.body.position.y < 450 && this.player.body.position.y > 190){
+                            message = "Los baños...";
+                        }
+                        else if(this.player.body.position.y < 190){
+                            message = "La cocina...";
+                        }
+                    }
+                }
+
+                $("#console").text(message);
+                $(".dialog-box").css({
+                    "display": "block"
+                });
+
+                setTimeout(function(){
+                    $(".dialog-box").css({
+                        "display": "none"
+                    });
+                }, 2000);
+            }
+
+        };
+
+        game.state.add("Game", PhaserState, true);
+    </script>
+</html>
